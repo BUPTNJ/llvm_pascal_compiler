@@ -12,7 +12,7 @@ void CodeGenContext::generateCode(NBlock& root)
 	/* Create the top level interpreter function to call as entry */
 	vector<Type*> argTypes;
 	FunctionType *ftype = FunctionType::get(Type::getVoidTy(MyContext), makeArrayRef(argTypes), false);
-	mainFunction = Function::Create(ftype, GlobalValue::InternalLinkage, "main", module);
+	mainFunction = Function::Create(ftype, GlobalValue::ExternalLinkage, "main", module);
 	BasicBlock *bblock = BasicBlock::Create(MyContext, "entry", mainFunction, 0);
 	
 	/* Push a new variable/block context */
@@ -76,10 +76,17 @@ Value* NIdentifier::codeGen(CodeGenContext& context)
 {
 	std::cout << "Creating identifier reference: " << name << endl;
 	if (context.locals().find(name) == context.locals().end()) {
-		std::cerr << "undeclared variable " << name << endl;
-		return NULL;
+		if(context.locals().find(name+"__PASCAL__RET")  == context.locals().end()){
+			std::cerr << "undeclared variable " << name << endl;
+			return NULL;
+		}
+		else{
+			return new LoadInst(context.locals()[name+"__PASCAL__RET"], "", false, context.currentBlock());
+		}
 	}
-	return new LoadInst(context.locals()[name], "", false, context.currentBlock());
+	else{
+		return new LoadInst(context.locals()[name], "", false, context.currentBlock());
+	}
 }
 
 Value* NMethodCall::codeGen(CodeGenContext& context)
@@ -132,11 +139,18 @@ Value* NAssignment::codeGen(CodeGenContext& context)
 {
 	std::cout << "Creating assignment for " << lhs.name << endl;
 	if (context.locals().find(lhs.name) == context.locals().end()) {
-		
-		std::cerr << "undeclared variable " << lhs.name << endl;
-		return NULL;
+		if(context.locals().find(lhs.name+"__PASCAL__RET") ==context.locals().end()){
+			std::cerr << "undeclared variable " << lhs.name << endl;
+			return NULL;		
+		}
+		else{
+			return new StoreInst(rhs.codeGen(context), context.locals()[lhs.name+"__PASCAL__RET"], false, context.currentBlock());
+
+		}
 	}
-	return new StoreInst(rhs.codeGen(context), context.locals()[lhs.name], false, context.currentBlock());
+	else{
+		return new StoreInst(rhs.codeGen(context), context.locals()[lhs.name], false, context.currentBlock());
+	}
 }
 
 Value* NBlock::codeGen(CodeGenContext& context)
@@ -144,10 +158,8 @@ Value* NBlock::codeGen(CodeGenContext& context)
 	StatementList::const_iterator it;
 	Value *last = NULL;
 	for (it = statements.begin(); it != statements.end(); it++) {
-		std::cout<<"aaaa"<<endl;
 		std::cout << "Generating code for " << typeid(**it).name() << endl;
 		last = (**it).codeGen(context);
-		std::cout<<"bbb"<<endl;
 	}
 	std::cout << "Creating block" << endl;
 	return last;
@@ -216,6 +228,7 @@ Value* NFunctionDeclaration::codeGen(CodeGenContext& context)
 	
 	context.pushBlock(bblock);
 	
+
 	Function::arg_iterator argsValues = function->arg_begin();
     Value* argumentValue;
 
@@ -226,9 +239,19 @@ Value* NFunctionDeclaration::codeGen(CodeGenContext& context)
 		argumentValue->setName((*it)->id.name.c_str());
 		StoreInst *inst = new StoreInst(argumentValue, context.locals()[(*it)->id.name], false, bblock);
 	}
+
+	//中间构造返回值
 	
+	NIdentifier* ret_ident=new NIdentifier(id.name + "__PASCAL__RET");
+	block.statements.push_back( new NReturnStatement(*ret_ident)); //返回操作加入到block中
+
+	NVariableDeclaration *ret_define=new NVariableDeclaration( type, *ret_ident   );
+	ret_define->codeGen(context);
+
+	//返回值构造结束
+
 	block.codeGen(context);
-	ReturnInst::Create(MyContext, context.getCurrentReturnValue(), bblock);
+	ReturnInst::Create(MyContext, context.getCurrentReturnValue(), context.currentBlock());
 
 	context.popBlock();
 	std::cout << "Creating function: " << id.name << endl;
@@ -242,33 +265,94 @@ Value* NIFStatement::codeGen(CodeGenContext& context)
 	
     if (CondV == 0)return 0;
 	Function *TheFunction=context.currentBlock()->getParent();
-	BasicBlock *ThenBB =BasicBlock::Create(MyContext, "then",TheFunction);
-	BasicBlock *ElseBB = BasicBlock::Create(MyContext, "else",TheFunction);
-	BasicBlock *MergeBB = BasicBlock::Create(MyContext, "ifcont",TheFunction);
+	BasicBlock *ThenBB,*ElseBB,*MergeBB;
+	ThenBB =BasicBlock::Create(MyContext, "then",TheFunction);
+
+	//产生else block
+	if(else_use==1)ElseBB = BasicBlock::Create(MyContext, "else",TheFunction);
+
+	MergeBB = BasicBlock::Create(MyContext, "ifcont",TheFunction);
 	llvm:IRBuilder<> Builder(MyContext);
 	auto *IntType = Builder.getInt64Ty();
 	ICmpInst *icmp = new ICmpInst(*context.currentBlock(),ICmpInst::ICMP_SLT,ConstantInt::get(IntType,0),CondV );	
-	BranchInst::Create	(	ThenBB, ElseBB,icmp,context.currentBlock() );	
-	std::map<std::string, Value*> templocals=context.locals();
+
+	//是否包括分支到else
+	if (else_use==1)BranchInst::Create	(	ThenBB, ElseBB,icmp,context.currentBlock() );	
+	else BranchInst::Create	(	ThenBB, MergeBB,icmp,context.currentBlock() );	
+
+	std::map<std::string, Value*> templocals,templocals_1,templocals_2;
+	templocals=context.locals();
 	context.popBlock();
 	context.pushBlock(ThenBB);
 	context.setLocals(templocals);
 	
-	then_expr.codeGen(context);
+	then_block.codeGen(context);
 	BranchInst::Create(MergeBB,context.currentBlock());
 
-	std::map<std::string, Value*> templocals_1=context.locals();
-	context.popBlock();
-	context.pushBlock(ElseBB);
-	context.setLocals(templocals_1);
-	else_expr.codeGen(context);
-	BranchInst::Create(MergeBB,context.currentBlock());
 
-	std::map<std::string, Value*> templocals_2=context.locals();
+	templocals_1=context.locals();
 	context.popBlock();
+
+	//else 代码生成
+	if(else_use){
+		context.pushBlock(ElseBB);
+		context.setLocals(templocals_1);
+		else_block.codeGen(context);
+		BranchInst::Create(MergeBB,context.currentBlock());
+		templocals_2=context.locals();
+		context.popBlock();
+	}
 	context.pushBlock(MergeBB);
 	context.setLocals(templocals_2);
 
     return CondV;
+
+}
+
+
+Value* FORStatement::codeGen(CodeGenContext& context)
+{
+	
+	//循环变量赋初值
+	NAssignment* inintal_assign= new NAssignment( iter,condition_start );
+	inintal_assign->codeGen(context);
+	NInteger *iter_add_value = new NInteger(1);
+
+	Function *TheFunction=context.currentBlock()->getParent();
+
+	BasicBlock *judgeBB=BasicBlock::Create(MyContext, "judge",TheFunction);
+	BasicBlock *workBB=BasicBlock::Create(MyContext, "work",TheFunction);
+	BasicBlock *endBB=BasicBlock::Create(MyContext, "end",TheFunction);
+
+	BranchInst::Create	(	judgeBB, context.currentBlock() );
+	std::map<std::string, Value*> templocals,templocals_1,templocals_2;
+
+	templocals=context.locals();
+	context.popBlock();
+	context.pushBlock(judgeBB);
+	context.setLocals(templocals);
+
+	LoadInst *lditer = new LoadInst(context.locals()[iter.name], "", false, context.currentBlock());
+	ICmpInst *icmp = new ICmpInst(*context.currentBlock(), ICmpInst::ICMP_SLE , lditer, condition_end.codeGen(context) );	
+
+	BranchInst::Create	(	workBB, endBB, icmp ,context.currentBlock() );	
+
+	templocals_1=context.locals();
+	context.popBlock();
+	context.pushBlock(workBB);
+	context.setLocals(templocals_1);
+
+	for_block.codeGen(context);
+
+	
+	NBinaryOperator* additer=new NBinaryOperator(iter, TPLUS,  *iter_add_value );
+	NAssignment *add_one_to_iter = new NAssignment(iter,*additer);
+	add_one_to_iter->codeGen(context);
+	BranchInst::Create	(	judgeBB, context.currentBlock() );
+
+	templocals_2=context.locals();
+	context.popBlock();
+	context.pushBlock(endBB);
+	context.setLocals(templocals_2);
 
 }

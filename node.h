@@ -151,10 +151,22 @@ public:
 class NIFStatement : public NStatement {
 public:
 	NExpression& condition_expr;
-	NExpression& then_expr;
-	NExpression& else_expr;
-	NIFStatement(NExpression& condition_expr, NExpression& then_expr,NExpression& else_expr):
-		condition_expr(condition_expr), then_expr(then_expr),else_expr(else_expr) { }
+	NExpression& then_block;
+	NExpression& else_block;
+	int else_use;
+	NIFStatement(NExpression& condition_expr, NExpression& then_block,NExpression& else_block,int else_use):
+		condition_expr(condition_expr), then_block(then_block),else_block(else_block),else_use(else_use) { }
 	virtual llvm::Value* codeGen(CodeGenContext& context);
 };
 
+class FORStatement : public NStatement {
+public:
+	NIdentifier& iter;
+	NExpression& condition_start;
+	NExpression& condition_end;
+	NExpression& for_block;
+	int else_use;
+	FORStatement(NIdentifier& iter,NExpression& condition_start, NExpression& condition_end,NExpression& for_block):
+		iter(iter),condition_start(condition_start), condition_end(condition_end),for_block(for_block) { }
+	virtual llvm::Value* codeGen(CodeGenContext& context);
+};

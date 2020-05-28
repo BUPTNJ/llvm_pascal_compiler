@@ -1,0 +1,23 @@
+program e(var input : int,var output : int);
+extern void printi(var val : int) 
+
+function dd (var a,b : int) :int {
+  a := a+b
+  return  a
+}
+
+var c,d,b,a:int
+
+b:=2
+a:=3
+
+if a>b then a:=3 else a:=4
+
+printi(a)
+
+c:=dd(a,b)
+d:=dd(c,d)
+
+if c>d then printi(c) else printi(d)
+
+

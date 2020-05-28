@@ -1,23 +1,22 @@
 program e(var input : int,var output : int);
 extern void printi(var val : int) 
+var c,d,b,a,i:int
+function dd (var a: int) :int 
+  begin
+    if a>2 then
+      dd:=dd(a-1)*(a+1) 
+    else 
+    begin 
+      dd:=1
+    end
+  end;
 
-function dd (var a,b : int) :int {
-  a := a+b
-  return  a
-}
+begin
 
-var c,d,b,a:int
-
-b:=2
-a:=3
-
-if a>b then a:=3 else a:=4
-
-printi(a)
-
-c:=dd(a,b)
-d:=dd(c,d)
-
-if c>d then printi(c) else printi(d)
-
+for i:=1 to 5 do 
+  begin
+  printi(dd(i))
+  end
+for i:=1 to 3 do printi(dd(i))
+end.
 

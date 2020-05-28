@@ -36,8 +36,8 @@ void createEchoFunction(CodeGenContext& context, llvm::Function* printfFn)
             llvm::Type::getVoidTy(MyContext), echo_arg_types, false);
 
     llvm::Function *func = llvm::Function::Create(
-                echo_type, llvm::Function::InternalLinkage,
-                llvm::Twine("echo"),
+                echo_type, llvm::Function::ExternalLinkage,
+                llvm::Twine("printf_c"),
                 context.module
            );
     llvm::BasicBlock *bblock = llvm::BasicBlock::Create(MyContext, "entry", func, 0);
@@ -76,3 +76,4 @@ void createCoreFunctions(CodeGenContext& context){
 	llvm::Function* printfFn = createPrintfFunction(context);
     createEchoFunction(context, printfFn);
 }
+

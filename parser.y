@@ -18,6 +18,7 @@
 	NIdentifier *ident;
 	NVariableDeclaration *var_decl;
 	NVariableDeclarationS *varlist_decl;
+	NFunctionDeclaration *func_decl;
 	std::vector<NVariableDeclaration*> *varvec;
 	std::vector<NVariableDeclarationS*> *varlistvec;
 	std::vector<NExpression*> *exprvec;
@@ -34,8 +35,8 @@
 %token <string> TIDENTIFIER TINTEGER TDOUBLE
 %token <token> TCEQ TCNE TCLT TCLE TCGT TCGE TEQUAL
 %token <token> TLPAREN TRPAREN TLBRACE TRBRACE TCOMMA TDOT
-%token <token> TPLUS TMINUS TMUL TDIV
-%token <token> TRETURN TEXTERN VAR COLON FUNCTION SEMICOLON PROGRAM IF ELSE THEN
+%token <token> TPLUS TMINUS TMUL TDIV 
+%token <token> TRETURN TEXTERN VAR COLON FUNCTION SEMICOLON PROGRAM IF ELSE THEN TBEGIN TEND TDO TFOR TTO 
 
 /* Define the type of node our nonterminal symbols represent.
    The types refer to the %union declaration above. Ex: when
@@ -43,15 +44,15 @@
    calling an (NIdentifier*). It makes the compiler happy.
  */
 %type <ident> ident
-%type <expr> numeric expr 
+%type <expr> numeric expr  expr_block
 %type <varvec> func_decl_args
 %type <exprvec> call_args
-%type <block> program stmts block
-%type <stmt> stmt func_decl extern_decl
+%type <block> program stmts block main_stmt
+%type <stmt> stmt extern_decl
 %type <token> comparison
 %type <identlist> idlist
 %type <varlist_decl> var_decl
-
+%type <func_decl> func_decl
 /* Operator precedence for mathematical operators */
 %left TPLUS TMINUS
 %left TMUL TDIV
@@ -60,23 +61,36 @@
 
 %%
 
-program :  head stmts { programBlock = $2; }
+program :  head stmts main_stmt 
+		{ 
+			programBlock = $2; 
+			for(int i=0;i<$3->statements.size();i++){
+				programBlock->statements.push_back($3->statements[i]);
+			}
+		}
 		;
 head : PROGRAM ident TLPAREN func_decl_args TRPAREN SEMICOLON
       ; 
+main_stmt : block TDOT { $$ = $1;}
+
 stmts : stmt { $$ = new NBlock(); $$->statements.push_back($<stmt>1); }
 	  | stmts stmt { $1->statements.push_back($<stmt>2); }
 	  ;
 
+expr_block : expr { $$ = $1 ;}
+	| block {$$ = $1;}
+	;
+
 stmt : var_decl | func_decl | extern_decl
 	 | expr { $$ = new NExpressionStatement(*$1); }
 	 | TRETURN expr { $$ = new NReturnStatement(*$2); }
-	 | IF expr THEN expr ELSE expr { $$ = new NIFStatement(*$2,*$4,*$6); }
-
+	 | IF expr THEN expr_block ELSE expr_block { $$ = new NIFStatement(*$2,*$4,*$6,1); }
+	 | IF expr THEN expr_block { $$ = new NIFStatement(*$2,*$4,*$4,0); }
+	 | TFOR ident COLON TEQUAL expr TTO expr TDO expr_block { $$ = new FORStatement(*$2,*$5,*$7,*$9);}
      ;
 
-block : TLBRACE stmts TRBRACE { $$ = $2; }
-	  | TLBRACE TRBRACE { $$ = new NBlock(); }
+block : TBEGIN stmts TEND { $$ = $2; }
+	  | TBEGIN TEND { $$ = new NBlock(); }
 	  ;
 
 var_decl : VAR idlist COLON  ident {
@@ -94,8 +108,11 @@ extern_decl : TEXTERN ident ident TLPAREN func_decl_args TRPAREN
                 { $$ = new NExternDeclaration(*$2, *$3, *$5); delete $5; }
             ;
 
-func_decl : FUNCTION ident TLPAREN func_decl_args TRPAREN COLON ident  block 
-			{ $$ = new NFunctionDeclaration(*$7, *$2, *$4, *$8); delete $4; }
+func_decl : FUNCTION ident TLPAREN func_decl_args TRPAREN COLON ident  block SEMICOLON
+			{ 
+				$$ = new NFunctionDeclaration(*$7, *$2, *$4, *$8); delete $4;
+
+			 }
 		  ;
 	
 func_decl_args : /*blank*/  { $$ = new VariableList(); }

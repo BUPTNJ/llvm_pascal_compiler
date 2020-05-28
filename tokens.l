@@ -12,6 +12,11 @@
 %%
 
 [ \t\n]					        ;
+"for"                           return TOKEN(TFOR);
+"to"                            return TOKEN(TTO);
+"do"                            return TOKEN(TDO);
+"begin"                         return TOKEN(TBEGIN);
+"end"                           return TOKEN(TEND);
 "if"                            return TOKEN(IF);
 "else"                          return TOKEN(ELSE);
 "then"                          return TOKEN(THEN);
